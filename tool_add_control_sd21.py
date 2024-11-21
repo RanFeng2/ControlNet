@@ -1,5 +1,6 @@
 import sys
 import os
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
 assert len(sys.argv) == 3, 'Args are wrong.'
 
