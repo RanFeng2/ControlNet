@@ -1,5 +1,5 @@
-from share import *
-import config
+from tools.share import *
+import gradios.config as config
 
 import cv2
 import einops

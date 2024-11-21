@@ -14,7 +14,7 @@ assert os.path.exists(os.path.dirname(path_output)), 'Output folder not exists!'
 
 
 import torch
-from share import *
+from tools.share import *
 from cldm.model import load_state_dict
 
 

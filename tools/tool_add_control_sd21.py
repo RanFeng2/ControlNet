@@ -1,5 +1,6 @@
 import sys
 import os
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
 assert len(sys.argv) == 3, 'Args are wrong.'
 
@@ -11,7 +12,7 @@ assert not os.path.exists(output_path), 'Output filename already exists.'
 assert os.path.exists(os.path.dirname(output_path)), 'Output path is not valid.'
 
 import torch
-from share import *
+from tools.share import *
 from cldm.model import create_model
 
 
@@ -24,7 +25,7 @@ def get_node_name(name, parent_name):
     return True, name[len(parent_name):]
 
 
-model = create_model(config_path='./models/cldm_v15.yaml')
+model = create_model(config_path='./models/cldm_v21.yaml')
 
 pretrained_weights = torch.load(input_path)
 if 'state_dict' in pretrained_weights:

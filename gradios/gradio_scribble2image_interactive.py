@@ -1,5 +1,5 @@
-from share import *
-import config
+from tools.share import *
+import gradios.config as config
 
 import cv2
 import einops
@@ -10,12 +10,9 @@ import random
 
 from pytorch_lightning import seed_everything
 from annotator.util import resize_image, HWC3
-from annotator.hed import HEDdetector, nms
 from cldm.model import create_model, load_state_dict
 from cldm.ddim_hacked import DDIMSampler
 
-
-apply_hed = HEDdetector()
 
 model = create_model('./models/cldm_v15.yaml').cpu()
 model.load_state_dict(load_state_dict('./models/control_sd15_scribble.pth', location='cuda'))
@@ -23,19 +20,13 @@ model = model.cuda()
 ddim_sampler = DDIMSampler(model)
 
 
-def process(input_image, prompt, a_prompt, n_prompt, num_samples, image_resolution, detect_resolution, ddim_steps, guess_mode, strength, scale, seed, eta):
+def process(input_image, prompt, a_prompt, n_prompt, num_samples, image_resolution, ddim_steps, guess_mode, strength, scale, seed, eta):
     with torch.no_grad():
-        input_image = HWC3(input_image)
-        detected_map = apply_hed(resize_image(input_image, detect_resolution))
-        detected_map = HWC3(detected_map)
-        img = resize_image(input_image, image_resolution)
+        img = resize_image(HWC3(input_image['mask'][:, :, 0]), image_resolution)
         H, W, C = img.shape
 
-        detected_map = cv2.resize(detected_map, (W, H), interpolation=cv2.INTER_LINEAR)
-        detected_map = nms(detected_map, 127, 3.0)
-        detected_map = cv2.GaussianBlur(detected_map, (0, 0), 3.0)
-        detected_map[detected_map > 4] = 255
-        detected_map[detected_map < 255] = 0
+        detected_map = np.zeros_like(img, dtype=np.uint8)
+        detected_map[np.min(img, axis=2) > 127] = 255
 
         control = torch.from_numpy(detected_map.copy()).float().cuda() / 255.0
         control = torch.stack([control for _ in range(num_samples)], dim=0)
@@ -71,13 +62,23 @@ def process(input_image, prompt, a_prompt, n_prompt, num_samples, image_resoluti
     return [255 - detected_map] + results
 
 
+def create_canvas(w, h):
+    return np.zeros(shape=(h, w, 3), dtype=np.uint8) + 255
+
+
 block = gr.Blocks().queue()
 with block:
     with gr.Row():
-        gr.Markdown("## Control Stable Diffusion with Fake Scribble Maps")
+        gr.Markdown("## Control Stable Diffusion with Interactive Scribbles")
     with gr.Row():
         with gr.Column():
-            input_image = gr.Image(source='upload', type="numpy")
+            canvas_width = gr.Slider(label="Canvas Width", minimum=256, maximum=1024, value=512, step=1)
+            canvas_height = gr.Slider(label="Canvas Height", minimum=256, maximum=1024, value=512, step=1)
+            create_button = gr.Button(label="Start", value='Open drawing canvas!')
+            input_image = gr.Image(source='upload', type='numpy', tool='sketch')
+            gr.Markdown(value='Do not forget to change your brush width to make it thinner. (Gradio do not allow developers to set brush width so you need to do it manually.) '
+                              'Just click on the small pencil icon in the upper right corner of the above block.')
+            create_button.click(fn=create_canvas, inputs=[canvas_width, canvas_height], outputs=[input_image])
             prompt = gr.Textbox(label="Prompt")
             run_button = gr.Button(label="Run")
             with gr.Accordion("Advanced options", open=False):
@@ -85,7 +86,6 @@ with block:
                 image_resolution = gr.Slider(label="Image Resolution", minimum=256, maximum=768, value=512, step=64)
                 strength = gr.Slider(label="Control Strength", minimum=0.0, maximum=2.0, value=1.0, step=0.01)
                 guess_mode = gr.Checkbox(label='Guess Mode', value=False)
-                detect_resolution = gr.Slider(label="HED Resolution", minimum=128, maximum=1024, value=512, step=1)
                 ddim_steps = gr.Slider(label="Steps", minimum=1, maximum=100, value=20, step=1)
                 scale = gr.Slider(label="Guidance Scale", minimum=0.1, maximum=30.0, value=9.0, step=0.1)
                 seed = gr.Slider(label="Seed", minimum=-1, maximum=2147483647, step=1, randomize=True)
@@ -95,7 +95,7 @@ with block:
                                       value='longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality')
         with gr.Column():
             result_gallery = gr.Gallery(label='Output', show_label=False, elem_id="gallery").style(grid=2, height='auto')
-    ips = [input_image, prompt, a_prompt, n_prompt, num_samples, image_resolution, detect_resolution, ddim_steps, guess_mode, strength, scale, seed, eta]
+    ips = [input_image, prompt, a_prompt, n_prompt, num_samples, image_resolution, ddim_steps, guess_mode, strength, scale, seed, eta]
     run_button.click(fn=process, inputs=ips, outputs=[result_gallery])
 
 
